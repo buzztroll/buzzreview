@@ -24,7 +24,10 @@ def print_review(r, details=False):
             print "\t%d" % (len(d.uncovered))
         total += len(d.uncovered)
     print "Total not covered: %d" % total
-    print "Percent not covered %3.2f" % (float(total) / float(line_changes) * 100.0)
+    percent = 0.0
+    if line_changes != 0:
+        percent = (float(total) / float(line_changes) * 100.0)
+    print "Percent not covered %3.2f" % percent
     print ""
 
 
@@ -45,6 +48,10 @@ def main():
                       dest="branch",
                       default=None,
                       help="The branch to check.  No onther branch will be reviewed.")
+    parser.add_option("-p", "--project",
+                      dest="project",
+                      default='glance',
+                      help="The project to check reviews on.  Default is glance")
     parser.add_option("-n", "--number",
                       dest="numbers",
                       action="append",
@@ -62,10 +69,12 @@ def main():
     (options, args) = parser.parse_args()
 
     # --reviewier
-    reviews = buzzreview.gerrit.get_gerrit_info(branch=options.branch,
-                                                approvers=options.reviewer,
-                                                basedir=options.basedir,
-                                                need_jenkins=options.need_jenkins)
+    reviews = buzzreview.gerrit.get_gerrit_info(
+        branch=options.branch,
+        approvers=options.reviewer,
+        basedir=options.basedir,
+        need_jenkins=options.need_jenkins,
+        project=options.project)
 
 
     for r in reviews:

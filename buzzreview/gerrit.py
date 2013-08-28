@@ -4,17 +4,18 @@ import os
 import pygit2
 import shutil
 import subprocess
+import sys
 import json
 from datetime import datetime
 
 
 class ReviewFile(object):
-    def __init__(self, hunk, cov, basedir):
+    def __init__(self, hunk, cov, basedir, project):
         self.file_name = hunk.new_file_path
         self.base_file_name = os.path.basename(self.file_name)
         self.hunk = hunk
         self.new_lines, self.deleted_lines = self._get_new_lines()
-        coverage_dir = os.path.join(basedir, 'glance')
+        coverage_dir = os.path.join(basedir, project)
         self.total_missing_lines = self._get_uncovered_lines(cov, coverage_dir)
         self.uncovered = list(set(self.new_lines) & set(self.total_missing_lines))
         self.uncovered.sort()
@@ -57,7 +58,7 @@ def check_approvers(review_approval, approvers):
 
 
 class PatchSubmission(object):
-    def __init__(self, review, basedir):
+    def __init__(self, review, basedir, project):
         self._raw_review = review
         self.subject = review['subject']
         self.last_updated = datetime.fromtimestamp(review['lastUpdated'])
@@ -65,8 +66,8 @@ class PatchSubmission(object):
         self.ref = review['currentPatchSet']['ref']
         self.url = review['url']
         self.number = review['number']
-        self.project = review['project']
         self.owner = review['owner']['username']
+        self.project = project
         self.git_cmd = ('git fetch https://review.openstack.org/%(project)s %(ref)s'
                         ' && git checkout FETCH_HEAD' % self.__dict__)
         self.dir = os.path.join(basedir, 'review%s' % self.number)
@@ -81,7 +82,7 @@ class PatchSubmission(object):
             return True
 
         r_json = json.load(open(self.review_file, 'r'))
-        stored_review = PatchSubmission(r_json, '/tmp/')
+        stored_review = PatchSubmission(r_json, '/tmp/', self.project)
         if stored_review.last_updated != self.last_updated:
             return True
 
@@ -97,7 +98,7 @@ class PatchSubmission(object):
         print cmd
         while rc is None:
             #print p.stderr.readline()
-            print p.stdout.readline()
+            sys.stdout.write(p.stdout.readline())
             rc = p.poll()
         print rc
         stdout, stderr = p.communicate()
@@ -114,9 +115,9 @@ class PatchSubmission(object):
 
         os.mkdir(self.dir)
         os.chdir(self.dir)
-        git_checkout = 'git clone https://github.com/%s.git' % (self.project)
+        git_checkout = 'git clone https://github.com/openstack/%s.git' % (self.project)
         self._execute(git_checkout)
-        os.chdir(os.path.join(self.dir, 'glance'))
+        os.chdir(os.path.join(self.dir, self.project))
         self._execute(self.git_cmd)
         self._execute('git checkout -b review')
         self._test()
@@ -128,8 +129,8 @@ class PatchSubmission(object):
         self._execute_and_print(cmd)
 
     def git_differences(self):
-        _git = os.path.join(self.dir, 'glance/.git')
-        _coverage = os.path.join(self.dir, 'glance/.coverage')
+        _git = os.path.join(self.dir, '%s/.git' % self.project)
+        _coverage = os.path.join(self.dir, '%s/.coverage' % self.project)
         cov = coverage.coverage(_coverage)
         cov.load()
 
@@ -144,14 +145,14 @@ class PatchSubmission(object):
 
         altered_files = []
         for hunk in diff:
-            af = ReviewFile(hunk, cov, self.dir)
+            af = ReviewFile(hunk, cov, self.dir, self.project)
             altered_files.append(af)
         return altered_files
 
 
 def _get_from_gerrit(hostname='review.openstack.org', port=29418,
                      username=None, branch=None, approvers=None,
-                     basedir=None, need_jenkins=True):
+                     basedir=None, need_jenkins=True, project='glance'):
     if username is None:
         username = getpass.getuser()
 
@@ -159,8 +160,8 @@ def _get_from_gerrit(hostname='review.openstack.org', port=29418,
         basedir = os.path.expanduser('~/')
 
     ssh_cmd = ('ssh %s@%s -p %d gerrit query'
-                '" status:open project:openstack/glance" --format JSON'
-                 ' --current-patch-set' % (username, hostname, port))
+                '" status:open project:openstack/%s" --format JSON'
+                 ' --current-patch-set' % (username, hostname, port, project))
 
     p = subprocess.Popen([ssh_cmd], shell=True, stdin=subprocess.PIPE,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -174,10 +175,11 @@ def _get_from_gerrit(hostname='review.openstack.org', port=29418,
              continue
 
         # skip anything that jenkins did not approve
-        if 'approvals' not in review['currentPatchSet']:
-            continue
-        if need_jenkins and not check_jenkins_rejection(review['currentPatchSet']['approvals']):
-            continue
+        if need_jenkins:
+            if 'approvals' not in review['currentPatchSet']:
+                continue
+            if not check_jenkins_rejection(review['currentPatchSet']['approvals']):
+                continue
 
         if approvers and check_approvers(review['currentPatchSet']['approvals'],
                                          approvers):
@@ -186,10 +188,11 @@ def _get_from_gerrit(hostname='review.openstack.org', port=29418,
         if branch and review['branch'] != branch:
             continue
 
-        reviews.append(PatchSubmission(review, basedir))
+        reviews.append(PatchSubmission(review, basedir, project))
 
     return reviews
 
-def get_gerrit_info(branch=None, approvers=None, basedir=None, need_jenkins=True):
+def get_gerrit_info(branch=None, approvers=None, basedir=None,
+                    need_jenkins=True, project='glance'):
     return _get_from_gerrit(branch=branch, approvers=approvers, basedir=basedir,
-                            need_jenkins=need_jenkins)
+                            need_jenkins=need_jenkins, project=project)
