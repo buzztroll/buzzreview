@@ -38,8 +38,8 @@ def main():
                                                 approvers=[getpass.getuser()])
 
     for r in reviews:
-        pass
+        r.checkout()
+        print_review(r)
     print len(reviews)
 
-    r.checkout()
-    print_review(r)
+
