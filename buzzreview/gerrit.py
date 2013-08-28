@@ -174,10 +174,11 @@ def _get_from_gerrit(hostname='review.openstack.org', port=29418,
              continue
 
         # skip anything that jenkins did not approve
-        if 'approvals' not in review['currentPatchSet']:
-            continue
-        if need_jenkins and not check_jenkins_rejection(review['currentPatchSet']['approvals']):
-            continue
+        if need_jenkins:
+            if 'approvals' not in review['currentPatchSet']:
+                continue
+            if not check_jenkins_rejection(review['currentPatchSet']['approvals']):
+                continue
 
         if approvers and check_approvers(review['currentPatchSet']['approvals'],
                                          approvers):
