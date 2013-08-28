@@ -1,6 +1,6 @@
 import getpass
 import buzzreview.gerrit
-
+import optparse
 
 def print_review(r, details=False):
     print '--------'
@@ -27,19 +27,52 @@ def print_review(r, details=False):
     print "Percent not covered %3.2f" % (float(total) / float(line_changes) * 100.0)
     print ""
 
+
 def main():
-    # --help
+    parser = optparse.OptionParser(usage="usage: %prog [options]",
+                                   version="%prog 0.1")
+    parser.add_option("-V", "--verbose",
+                      dest="verbose",
+                      action="store_true",
+                      default=False,
+                      help="Show more details.")
+    parser.add_option("-J", "--no-jenkins",
+                      dest="need_jenkins",
+                      action="store_false",
+                      default=True,
+                      help="Do not insist that it passed jenkins.")
+    parser.add_option("-b", "--branch",
+                      dest="branch",
+                      default=None,
+                      help="The branch to check.  No onther branch will be reviewed.")
+    parser.add_option("-n", "--number",
+                      dest="numbers",
+                      action="append",
+                      default=None,
+                      help="The specific bug number to review.  This can be used multiple times.  The defaiult is all.",)
+    parser.add_option("-r", "--reviewer",
+                      dest="reviewer",
+                      action="append",
+                      default=None,
+                      help="Ignore all reviews if this reviewer has already commented.  The default is the current unix user.",)
+    parser.add_option("-d", "--basedir",
+                      dest="basedir",
+                      default=None,
+                      help="The directory under which all the code will be checked out, the default is the users home directory.",)
+    (options, args) = parser.parse_args()
+
     # --reviewier
-    # --branch
-    # --all (all reviews)
-    # --spectic
-    # --basedir
-    reviews = buzzreview.gerrit.get_gerrit_info(branch='master',
-                                                approvers=[getpass.getuser()])
+    reviews = buzzreview.gerrit.get_gerrit_info(branch=options.branch,
+                                                approvers=options.reviewer,
+                                                basedir=options.basedir,
+                                                need_jenkins=options.need_jenkins)
+
 
     for r in reviews:
+        if options.numbers and r.number not in options.numbers:
+            continue
         r.checkout()
-        print_review(r)
+        print_review(r, details=options.verbose)
     print len(reviews)
 
 

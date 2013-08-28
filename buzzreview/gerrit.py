@@ -11,6 +11,7 @@ from datetime import datetime
 class ReviewFile(object):
     def __init__(self, hunk, cov, basedir):
         self.file_name = hunk.new_file_path
+        self.base_file_name = os.path.basename(self.file_name)
         self.hunk = hunk
         self.new_lines, self.deleted_lines = self._get_new_lines()
         coverage_dir = os.path.join(basedir, 'glance')
@@ -32,6 +33,10 @@ class ReviewFile(object):
         return new_lines, deleted_lines
 
     def _get_uncovered_lines(self, cov, basedir):
+        if not self.file_name.endswith('py'):
+            return []
+        if self.base_file_name.startswith('test_'):
+            return []
         hunk_path = os.path.join(basedir, self.hunk.new_file_path)
         missing_list = cov.analysis2(hunk_path)
         return missing_list[3]
@@ -146,7 +151,7 @@ class PatchSubmission(object):
 
 def _get_from_gerrit(hostname='review.openstack.org', port=29418,
                      username=None, branch=None, approvers=None,
-                     basedir=None):
+                     basedir=None, need_jenkins=True):
     if username is None:
         username = getpass.getuser()
 
@@ -171,7 +176,7 @@ def _get_from_gerrit(hostname='review.openstack.org', port=29418,
         # skip anything that jenkins did not approve
         if 'approvals' not in review['currentPatchSet']:
             continue
-        if not check_jenkins_rejection(review['currentPatchSet']['approvals']):
+        if need_jenkins and not check_jenkins_rejection(review['currentPatchSet']['approvals']):
             continue
 
         if approvers and check_approvers(review['currentPatchSet']['approvals'],
@@ -185,5 +190,6 @@ def _get_from_gerrit(hostname='review.openstack.org', port=29418,
 
     return reviews
 
-def get_gerrit_info(branch=None, approvers=None):
-    return _get_from_gerrit(branch=branch, approvers=approvers)
+def get_gerrit_info(branch=None, approvers=None, basedir=None, need_jenkins=True):
+    return _get_from_gerrit(branch=branch, approvers=approvers, basedir=basedir,
+                            need_jenkins=need_jenkins)
