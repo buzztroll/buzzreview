@@ -68,11 +68,12 @@ class PatchSubmission(object):
         self.number = review['number']
         self.owner = review['owner']['username']
         self.project = project
-        self.git_cmd = ('git fetch https://review.openstack.org/%(project)s %(ref)s'
-                        ' && git checkout FETCH_HEAD' % self.__dict__)
+        self.git_cmd = ('git fetch '
+                        'https://review.openstack.org/openstack/%(project)s '
+                        '%(ref)s '
+                        '&& git checkout FETCH_HEAD' % self.__dict__)
         self.dir = os.path.join(basedir, 'review%s' % self.number)
         self.review_file = os.path.join(self.dir, 'review.txt')
-
 
     def _test_checkout(self):
         if not os.path.exists(self.dir):
@@ -104,6 +105,8 @@ class PatchSubmission(object):
         stdout, stderr = p.communicate()
         print stdout
         print stderr
+        if rc != 0:
+            raise Exception("Failed to run the command %s" % cmd)
 
     def checkout(self):
         if not self._test_checkout():
@@ -138,15 +141,14 @@ class PatchSubmission(object):
             raise IOError(".git does not exist in the directory %s" % _git)
         repo = pygit2.Repository(_git)
         commit = repo.head.get_object()
-        if len(commit.parents) != 1:
-            raise Exception('Problem, many parents')
-        parent = commit.parents[0]
-        diff = parent.tree.diff_to_tree(commit.tree)
 
         altered_files = []
-        for hunk in diff:
-            af = ReviewFile(hunk, cov, self.dir, self.project)
-            altered_files.append(af)
+        for parent in commit.parents:
+            diff = parent.tree.diff_to_tree(commit.tree)
+
+            for hunk in diff:
+                af = ReviewFile(hunk, cov, self.dir, self.project)
+                altered_files.append(af)
         return altered_files
 
 
